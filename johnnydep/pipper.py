@@ -82,6 +82,7 @@ def _download_dist(url, scratch_file, index_url, extra_index_url):
             # handling private PyPI credentials in extra_index_url
             auth = (parsed.username, parsed.password)
     target, _headers = urlretrieve(url, scratch_file, auth=auth)
+    pprint('*** ' + target)
     return target, _headers
 
 
@@ -135,7 +136,6 @@ def get(dist_name, index_url=None, env=None, extra_index_url=None, tmpdir=None):
         line = line.strip()
         if line.startswith("Downloading "):
             parts = line.split()
-            pprint(line)
             last = parts[-1]
             if len(parts) == 3 and last.startswith("(") and last.endswith(")"):
                 link = parts[-2]
@@ -144,11 +144,13 @@ def get(dist_name, index_url=None, env=None, extra_index_url=None, tmpdir=None):
             else:
                 link = last
 
-            if link.startswith('http'):
+            pprint('downloading: ' + link)
+            if link.startswith('http') or link.endswith('whl'):
                 links.append(link)
         elif line.startswith("Source in ") and "which satisfies requirement" in line:
             link = line.split()[-1]
-            if link.startswith('http'):
+            pprint('source in: ' + link)
+            if link.startswith('http') or link.endswith('whl'):
                 links.append(link)
     pprint(links)
     links = list(OrderedDict.fromkeys(links))  # order-preserving dedupe
