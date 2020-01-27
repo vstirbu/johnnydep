@@ -22,6 +22,8 @@ from johnnydep.compat import urlparse, urlretrieve
 from johnnydep.logs import configure_logging
 from johnnydep.util import python_interpreter
 
+from pprint import pprint
+
 log = get_logger(__name__)
 
 
@@ -52,9 +54,11 @@ def _get_wheel_args(index_url, env, extra_index_url):
         "--disable-pip-version-check",
     ]
     if index_url is not None and index_url != DEFAULT_INDEX:
-        args += ["--index-url", index_url, "--trusted-host", urlparse(index_url).hostname]
+        args += ["--index-url", index_url,
+                 "--trusted-host", urlparse(index_url).hostname]
     if extra_index_url is not None:
-        args += ["--extra-index-url", extra_index_url, "--trusted-host", urlparse(extra_index_url).hostname]
+        args += ["--extra-index-url", extra_index_url,
+                 "--trusted-host", urlparse(extra_index_url).hostname]
     if env is None:
         pip_version = pip.__version__
     else:
@@ -85,7 +89,8 @@ def _download_dist(url, scratch_file, index_url, extra_index_url):
 def get_versions(dist_name, index_url=None, env=None, extra_index_url=None):
     bare_name = pkg_resources.Requirement.parse(dist_name).name
     log.debug("checking versions available", dist=bare_name)
-    args = _get_wheel_args(index_url, env, extra_index_url) + [dist_name + "==showmethemoney"]
+    args = _get_wheel_args(index_url, env, extra_index_url) + \
+        [dist_name + "==showmethemoney"]
     try:
         out = subprocess.check_output(args, stderr=subprocess.STDOUT)
     except subprocess.CalledProcessError as err:
@@ -114,9 +119,11 @@ def get_versions(dist_name, index_url=None, env=None, extra_index_url=None):
 def get(dist_name, index_url=None, env=None, extra_index_url=None, tmpdir=None):
     args = _get_wheel_args(index_url, env, extra_index_url) + [dist_name]
     scratch_dir = tempfile.mkdtemp(dir=tmpdir)
-    log.debug("wheeling and dealing", scratch_dir=os.path.abspath(scratch_dir), args=" ".join(args))
+    log.debug("wheeling and dealing", scratch_dir=os.path.abspath(
+        scratch_dir), args=" ".join(args))
     try:
-        out = subprocess.check_output(args, stderr=subprocess.STDOUT, cwd=scratch_dir)
+        out = subprocess.check_output(
+            args, stderr=subprocess.STDOUT, cwd=scratch_dir)
     except subprocess.CalledProcessError as err:
         output = getattr(err, "output", b"").decode("utf-8")
         log.warning(output)
@@ -128,6 +135,7 @@ def get(dist_name, index_url=None, env=None, extra_index_url=None, tmpdir=None):
         line = line.strip()
         if line.startswith("Downloading "):
             parts = line.split()
+            pprint(line)
             last = parts[-1]
             if len(parts) == 3 and last.startswith("(") and last.endswith(")"):
                 link = parts[-2]
@@ -135,10 +143,14 @@ def get(dist_name, index_url=None, env=None, extra_index_url=None, tmpdir=None):
                 link = parts[-3]
             else:
                 link = last
-            links.append(link)
+
+            if link.startswith('http'):
+                links.append(link)
         elif line.startswith("Source in ") and "which satisfies requirement" in line:
             link = line.split()[-1]
-            links.append(link)
+            if link.startswith('http'):
+                links.append(link)
+    pprint(links)
     links = list(OrderedDict.fromkeys(links))  # order-preserving dedupe
     if not links:
         log.warning("could not find download link", out=out)
@@ -149,10 +161,14 @@ def get(dist_name, index_url=None, env=None, extra_index_url=None, tmpdir=None):
         # for the build system, even with --no-deps specified. pendulum==1.4.4 is one
         # example, which uses poetry and doesn't publish any python37 wheel to PyPI.
         # However, the dist itself should still be the first one downloaded.
-    link = links[0]
+        link = links[0]
     with working_directory(scratch_dir):
-        [whl] = [os.path.abspath(x) for x in os.listdir(".") if x.endswith(".whl")]
+        [whl] = [os.path.abspath(x)
+                 for x in os.listdir(".") if x.endswith(".whl")]
     url, _sep, checksum = link.partition("#")
+    pprint(links)
+    pprint(url)
+    pprint(checksum)
     if not checksum.startswith("md5=") and not checksum.startswith("sha256="):
         # PyPI gives you the checksum in url fragment, as a convenience. But not all indices are so kind.
         algorithm = "md5"
@@ -160,7 +176,8 @@ def get(dist_name, index_url=None, env=None, extra_index_url=None, tmpdir=None):
             target = whl
         else:
             scratch_file = os.path.join(scratch_dir, os.path.basename(url))
-            target, _headers = _download_dist(url, scratch_file, index_url, extra_index_url)
+            target, _headers = _download_dist(
+                url, scratch_file, index_url, extra_index_url)
         checksum = compute_checksum(target=target, algorithm=algorithm)
         checksum = "=".join([algorithm, checksum])
     result = {"path": whl, "url": url, "checksum": checksum}
@@ -172,8 +189,10 @@ def main():
     parser.add_argument("dist_name")
     parser.add_argument("--index-url", "-i")
     parser.add_argument("--extra-index-url")
-    parser.add_argument("--for-python", "-p", dest="env", type=python_interpreter)
-    parser.add_argument("--verbose", "-v", default=1, type=int, choices=range(3))
+    parser.add_argument("--for-python", "-p", dest="env",
+                        type=python_interpreter)
+    parser.add_argument("--verbose", "-v", default=1,
+                        type=int, choices=range(3))
     debug = {
         "sys.argv": sys.argv,
         "sys.executable": sys.executable,
@@ -185,7 +204,8 @@ def main():
     args = parser.parse_args()
     configure_logging(verbosity=args.verbose)
     log.debug("runtime info", **debug)
-    result = get(dist_name=args.dist_name, index_url=args.index_url, env=args.env, extra_index_url=args.extra_index_url)
+    result = get(dist_name=args.dist_name, index_url=args.index_url,
+                 env=args.env, extra_index_url=args.extra_index_url)
     text = json.dumps(result, indent=2, sort_keys=True, separators=(",", ": "))
     print(text)
 
